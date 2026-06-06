@@ -168,7 +168,10 @@ def test_validate_domain_profile_rejects_unknown_constraint_references() -> None
 
     errors = validate_domain_profile(profile)
 
-    assert "constraint 'BROKEN' references unknown observable 'Missing Observable'" in errors
+    assert (
+        "constraint 'BROKEN' references unknown observable 'Missing Observable'"
+        in errors
+    )
 
 
 def test_validate_domain_pair_accepts_cross_domain_pair() -> None:
