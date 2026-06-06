@@ -8,10 +8,10 @@ and intervention surface before any prediction can count as evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class DomainKind(str, Enum):
+class DomainKind(StrEnum):
     """High-level domain family used to prevent accidental same-domain trials."""
 
     COMPUTING = "computing"
@@ -24,7 +24,7 @@ class DomainKind(str, Enum):
     SYNTHETIC = "synthetic"
 
 
-class ObservableRole(str, Enum):
+class ObservableRole(StrEnum):
     """Role an observable plays inside a causal-transfer trial."""
 
     CONTEXT = "context"
@@ -35,7 +35,7 @@ class ObservableRole(str, Enum):
     STATE = "state"
 
 
-class ValueKind(str, Enum):
+class ValueKind(StrEnum):
     """Portable value categories for domain observables."""
 
     BOOLEAN = "boolean"
@@ -84,12 +84,19 @@ class DomainProfile:
     def observable_index(self) -> dict[str, Observable]:
         """Return observables keyed by normalized name."""
 
-        return {observable.normalized_name(): observable for observable in self.observables}
+        return {
+            observable.normalized_name(): observable
+            for observable in self.observables
+        }
 
     def observables_by_role(self, role: ObservableRole) -> tuple[Observable, ...]:
         """Return all observables with the requested role."""
 
-        return tuple(observable for observable in self.observables if observable.role is role)
+        return tuple(
+            observable
+            for observable in self.observables
+            if observable.role is role
+        )
 
     def has_role(self, role: ObservableRole) -> bool:
         """Return whether the domain exposes at least one observable for a role."""
@@ -128,7 +135,9 @@ def validate_domain_profile(profile: DomainProfile) -> tuple[str, ...]:
     if not profile.observables:
         errors.append("at least one observable is required")
 
-    normalized_names = [observable.normalized_name() for observable in profile.observables]
+    normalized_names = [
+        observable.normalized_name() for observable in profile.observables
+    ]
     if len(set(normalized_names)) != len(normalized_names):
         errors.append("observable names must be unique after normalization")
 
@@ -142,7 +151,9 @@ def validate_domain_profile(profile: DomainProfile) -> tuple[str, ...]:
         if not constraint.constraint_id.strip():
             errors.append("constraint_id must not be empty")
         if not constraint.description.strip():
-            errors.append(f"constraint {constraint.constraint_id!r} must have a description")
+            errors.append(
+                f"constraint {constraint.constraint_id!r} must have a description"
+            )
         for affected in constraint.affected_observables:
             if "_".join(affected.strip().lower().split()) not in observable_names:
                 errors.append(
