@@ -7,10 +7,10 @@ modules cannot silently convert a transfer trial into an AGI or autonomy claim.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class ClaimLevel(str, Enum):
+class ClaimLevel(StrEnum):
     """Allowed maturity language for IX-Function outputs."""
 
     RESEARCH_PROTOTYPE = "research_prototype"
