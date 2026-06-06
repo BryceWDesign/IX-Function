@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ix-function"
+version = "0.1.0"
+description = "Source-available cross-domain causal transfer research runtime for governed AGI-candidate evaluation."
+requires-python = ">=3.11"
+license = { text = "IX-Function Source-Available Evaluation License v1.0" }
+authors = [
+  { name = "Bryce Lovell" }
+]
+keywords = [
+  "agi-candidate",
+  "ai-governance",
+  "causal-transfer",
+  "cross-domain-learning",
+  "evidence",
+  "falsification",
+  "human-review",
+  "prediction",
+  "reality-feedback",
+  "uncertainty",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: Other/Proprietary License",
+  "Private :: Do Not Upload",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.11.0",
+  "pytest>=8.0.0",
+  "ruff>=0.6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/BryceWDesign/IX-Function"
+Commercial-Licensing = "https://www.linkedin.com/in/brycewdesign/"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ix_function = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "B",
+  "E",
+  "F",
+  "I",
+  "N",
+  "SIM",
+  "UP",
+  "W",
+]
+ignore = []
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+pretty = true
+show_error_codes = true
+warn_unreachable = true
