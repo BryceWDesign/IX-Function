@@ -226,6 +226,8 @@ def test_build_reality_delta_report_marks_supported_transfer() -> None:
     )
 
     assert report.report_id == "prediction-001:reality-delta"
+    assert report.prediction_id == "prediction-001"
+    assert report.function_id == "causal-bottleneck-v1"
     assert report.status is TransferOutcomeStatus.SUPPORTED
     assert report.is_supported()
     assert report.mean_score == 1.0
