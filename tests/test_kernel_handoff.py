@@ -11,16 +11,11 @@ from ix_function.kernel_handoff import (
     validate_kernel_handoff_packet,
 )
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, run_transfer_trial
+from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
 from tests.fixtures import make_trial_input
 
 
-def make_success_result_and_packet() -> object:
-    result = run_transfer_trial(make_trial_input())
-    return result, build_trial_evidence_packet(result)
-
-
-def make_failed_result() -> object:
+def make_failed_result() -> TransferTrialResult:
     trial_input = make_trial_input()
     failed_input = TransferTrialInput(
         trial_id=trial_input.trial_id,
