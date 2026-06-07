@@ -11,7 +11,11 @@ from ix_function.assurance_handoff import (
 )
 from ix_function.evidence import build_trial_evidence_packet
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
+from ix_function.trial import (
+    TransferTrialInput,
+    TransferTrialResult,
+    run_transfer_trial,
+)
 from tests.fixtures import make_trial_input
 
 
