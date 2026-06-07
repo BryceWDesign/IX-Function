@@ -7,10 +7,10 @@ that a digest proves truth, AGI, or operational readiness.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
-from enum import StrEnum
 import hashlib
 import json
+from dataclasses import asdict, dataclass, is_dataclass
+from enum import StrEnum
 from typing import Any, TypeAlias, cast
 
 from ix_function.trial import TransferTrialResult
