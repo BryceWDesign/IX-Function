@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ix_function.evidence import build_trial_evidence_packet
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, run_transfer_trial
+from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
 from ix_function.worldtwin_handoff import (
     WorldTwinAdaptationAction,
     WorldTwinHandoffStatus,
@@ -14,7 +14,7 @@ from ix_function.worldtwin_handoff import (
 from tests.fixtures import make_trial_input
 
 
-def make_failed_result() -> object:
+def make_failed_result() -> TransferTrialResult:
     trial_input = make_trial_input()
     failed_input = TransferTrialInput(
         trial_id=trial_input.trial_id,
