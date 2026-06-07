@@ -6,11 +6,16 @@ from ix_function.model_review import (
     ModelOutputClaimKind,
     ModelProviderKind,
     ModelProviderOutput,
+    ModelProviderReviewReport,
     build_model_provider_review_report,
     required_model_evidence_refs,
 )
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
+from ix_function.trial import (
+    TransferTrialInput,
+    TransferTrialResult,
+    run_transfer_trial,
+)
 from ix_function.wave6_review import (
     ReplicationReadinessStatus,
     Wave6ReviewDecision,
@@ -52,7 +57,7 @@ def make_model_output(
     )
 
 
-def make_clean_model_report(result: TransferTrialResult):
+def make_clean_model_report(result: TransferTrialResult) -> ModelProviderReviewReport:
     evidence_packet = build_trial_evidence_packet(result)
     return build_model_provider_review_report(
         report_id="trial-001:model-review",
@@ -73,7 +78,9 @@ def make_clean_model_report(result: TransferTrialResult):
     )
 
 
-def make_single_provider_model_report(result: TransferTrialResult):
+def make_single_provider_model_report(
+    result: TransferTrialResult,
+) -> ModelProviderReviewReport:
     evidence_packet = build_trial_evidence_packet(result)
     return build_model_provider_review_report(
         report_id="trial-001:model-review",
@@ -89,7 +96,9 @@ def make_single_provider_model_report(result: TransferTrialResult):
     )
 
 
-def make_overclaiming_model_report(result: TransferTrialResult):
+def make_overclaiming_model_report(
+    result: TransferTrialResult,
+) -> ModelProviderReviewReport:
     evidence_packet = build_trial_evidence_packet(result)
     return build_model_provider_review_report(
         report_id="trial-001:model-review",
@@ -168,7 +177,8 @@ def test_independent_replication_packet_ready_when_all_gates_are_clean() -> None
     assert validate_independent_replication_packet(packet) == ()
 
 
-def test_independent_replication_packet_needs_model_review_for_single_provider() -> None:
+def test_independent_replication_packet_needs_model_review_for_single_provider(
+) -> None:
     result = run_transfer_trial(make_trial_input())
     evidence_packet = build_trial_evidence_packet(result)
     integrated_bundle = build_integrated_handoff_bundle(
