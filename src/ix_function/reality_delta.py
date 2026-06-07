@@ -69,6 +69,7 @@ class RealityDeltaReport:
 
     report_id: str
     prediction_id: str
+    function_id: str
     target_domain_id: str
     target_intervention_id: str
     outcome_id: str
@@ -97,6 +98,7 @@ def build_reality_delta_report(
         return RealityDeltaReport(
             report_id=f"{prediction.prediction_id}:reality-delta",
             prediction_id=prediction.prediction_id,
+            function_id=prediction.function_id,
             target_domain_id=prediction.target_domain_id,
             target_intervention_id=prediction.target_intervention_id,
             outcome_id=outcome.outcome_id,
@@ -142,6 +144,7 @@ def build_reality_delta_report(
     return RealityDeltaReport(
         report_id=f"{prediction.prediction_id}:reality-delta",
         prediction_id=prediction.prediction_id,
+        function_id=prediction.function_id,
         target_domain_id=prediction.target_domain_id,
         target_intervention_id=prediction.target_intervention_id,
         outcome_id=outcome.outcome_id,
@@ -351,6 +354,8 @@ def validate_reality_delta_inputs(
     """Return blocking errors before scoring a reality-delta report."""
 
     errors: list[str] = []
+    if not prediction.function_id.strip():
+        errors.append("prediction function_id must not be empty")
     if prediction.target_domain_id != baseline.domain_id:
         errors.append("prediction target_domain_id must match baseline domain_id")
     if prediction.target_domain_id != outcome.domain_id:
