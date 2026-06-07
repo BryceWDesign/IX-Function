@@ -141,7 +141,10 @@ def test_review_model_output_requires_uncertainty_and_human_review() -> None:
     assert review.decision is ModelReviewDecision.REVISE_REQUIRED
     assert "model output did not acknowledge uncertainty" in review.revision_reasons
     assert "model output did not acknowledge human review" in review.revision_reasons
-    assert any("omitted required evidence refs" in reason for reason in review.revision_reasons)
+    assert any(
+        "omitted required evidence refs" in reason
+        for reason in review.revision_reasons
+    )
 
 
 def test_multi_provider_report_ready_for_human_review_when_clean() -> None:
@@ -216,7 +219,10 @@ def test_multi_provider_report_blocks_overclaiming_provider() -> None:
 
     assert report.status is ModelReviewGateStatus.BLOCKED
     assert report.blocked_reviews()
-    assert any(action.startswith("Block model-output-google") for action in report.required_actions)
+    assert any(
+        action.startswith("Block model-output-google")
+        for action in report.required_actions
+    )
 
 
 def test_validate_model_provider_review_report_detects_bad_boundary() -> None:
