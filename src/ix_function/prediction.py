@@ -221,10 +221,9 @@ def direction_matches_delta(
         return delta > tolerance
     if direction is PredictionDirection.DECREASE:
         return delta < -tolerance
-    if direction in {
-        PredictionDirection.LIMITED_CHANGE,
-        PredictionDirection.NO_CHANGE,
-    }:
+    if direction is PredictionDirection.LIMITED_CHANGE:
+        return abs(delta) <= tolerance
+    if direction is PredictionDirection.NO_CHANGE:
         return abs(delta) <= tolerance
     if direction is PredictionDirection.UNKNOWN:
         return False
