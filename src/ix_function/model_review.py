@@ -151,7 +151,9 @@ def review_model_output(
     cited_known_refs = tuple(
         ref for ref in output.cited_evidence_refs if ref in known_refs
     )
-    unknown_refs = tuple(ref for ref in output.cited_evidence_refs if ref not in known_refs)
+    unknown_refs = tuple(
+        ref for ref in output.cited_evidence_refs if ref not in known_refs
+    )
     if unknown_refs:
         revision_reasons.append(
             "model output cited unknown evidence refs: " + ", ".join(unknown_refs)
@@ -161,7 +163,9 @@ def review_model_output(
         result=result,
         evidence_packet=evidence_packet,
     )
-    missing_required_refs = tuple(ref for ref in required_refs if ref not in cited_known_refs)
+    missing_required_refs = tuple(
+        ref for ref in required_refs if ref not in cited_known_refs
+    )
     if missing_required_refs:
         revision_reasons.append(
             "model output omitted required evidence refs: "
@@ -271,7 +275,9 @@ def known_evidence_refs(
 ) -> frozenset[str]:
     """Return evidence refs model outputs are allowed to cite."""
 
-    artifact_refs = tuple(artifact.artifact_id for artifact in evidence_packet.artifacts)
+    artifact_refs = tuple(
+        artifact.artifact_id for artifact in evidence_packet.artifacts
+    )
     return frozenset(
         (
             evidence_packet.packet_id,
