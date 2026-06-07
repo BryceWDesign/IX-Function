@@ -7,64 +7,33 @@ from ix_function.causal_function import (
     CausalSlotRole,
     CausalVariableSlot,
 )
-from ix_function.domain import (
-    DomainKind,
-    DomainProfile,
-    Observable,
-    ObservableRole,
-    ValueKind,
+from ix_function.domain import ObservableRole
+from ix_function.learning import (
+    ConfidenceBand,
+    LearningDisposition,
+    build_learning_update,
+    choose_learning_disposition,
+    clamp_confidence,
+    classify_confidence,
+    combine_uncertainty_notes,
+    future_planning_rules_for,
+    validate_learning_inputs,
 )
-from ix_function.observation import (
-    DomainSnapshot,
-    InterventionRecord,
-    MeasuredValue,
-    OutcomeRecord,
-)
-from ix_function.source_learning import (
-    SourceLearningStatus,
-    SourceLearningTrial,
-    evaluate_source_learning_trial,
-    validate_source_learning_trial,
+from ix_function.prediction import PredictionDirection
+from ix_function.reality_delta import (
+    ObservableDelta,
+    OutcomeMatch,
+    RealityDeltaReport,
+    TransferOutcomeStatus,
 )
 
 
-def make_flow_domain() -> DomainProfile:
-    return DomainProfile(
-        domain_id="water-flow",
-        name="Water Flow",
-        kind=DomainKind.FLOW,
-        summary="A bounded flow domain with upstream input and downstream output.",
-        observables=(
-            Observable(
-                name="Input Rate",
-                role=ObservableRole.INTERVENTION,
-                value_kind=ValueKind.REAL,
-                description="Upstream capacity intervention in liters per second.",
-                unit="liters_per_second",
-            ),
-            Observable(
-                name="Output Rate",
-                role=ObservableRole.OUTPUT,
-                value_kind=ValueKind.REAL,
-                description="Final downstream throughput output.",
-                unit="liters_per_second",
-            ),
-            Observable(
-                name="System State",
-                role=ObservableRole.STATE,
-                value_kind=ValueKind.CATEGORICAL,
-                description="Whether the channel is saturated or unconstrained.",
-            ),
-        ),
-    )
-
-
-def make_bottleneck_function() -> CausalFunction:
+def make_function(confidence: float = 0.55) -> CausalFunction:
     return CausalFunction(
-        function_id="causal-bottleneck-v1",
+        function_id="prediction-001",
         name="Downstream Bottleneck Limit",
         family=CausalFamily.BOTTLENECK,
-        summary="More upstream input cannot exceed a saturated downstream channel.",
+        summary="Upstream increases cannot beat a downstream bottleneck.",
         variable_slots=(
             CausalVariableSlot(
                 slot_id="upstream_capacity_intervention",
@@ -76,186 +45,176 @@ def make_bottleneck_function() -> CausalFunction:
             CausalVariableSlot(
                 slot_id="final_output",
                 role=CausalSlotRole.OUTPUT,
-                description="Final output after the intervention.",
-                semantic_tags=("output", "throughput", "completion"),
+                description="Final output after intervention.",
+                semantic_tags=("output", "throughput"),
                 compatible_observable_roles=(ObservableRole.OUTPUT,),
             ),
         ),
         mechanisms=(
             CausalMechanism(
-                mechanism_id="saturated-output-limit",
+                mechanism_id="limited-output-gain",
                 family=CausalFamily.BOTTLENECK,
-                premise="The downstream path is already saturated.",
-                expected_effect="Increasing input produces little output gain.",
-                assumptions=("The downstream channel remains unchanged.",),
+                premise="A downstream stage is already limiting output.",
+                expected_effect="Increasing upstream capacity produces little gain.",
+                assumptions=("Downstream limit remains unchanged.",),
             ),
         ),
-        prior_confidence=0.55,
-        uncertainty_notes=("Hidden bypass channels may invalidate the mechanism.",),
-        learned_from_domain_id="water-flow",
+        prior_confidence=confidence,
+        uncertainty_notes=("Hidden parallel paths may invalidate the mechanism.",),
     )
 
 
-def make_supported_trial() -> SourceLearningTrial:
-    return SourceLearningTrial(
-        trial_id="source-trial-001",
-        source_domain=make_flow_domain(),
-        causal_function=make_bottleneck_function(),
-        baseline_snapshot=DomainSnapshot(
-            domain_id="water-flow",
-            snapshot_id="baseline-001",
-            captured_at_label="before-intervention",
-            values=(
-                MeasuredValue(
-                    observable_name="Output Rate",
-                    value=10.0,
-                    evidence_id="baseline-output-rate",
-                ),
-                MeasuredValue(
-                    observable_name="System State",
-                    value="saturated",
-                    evidence_id="baseline-state",
-                ),
+def make_report(
+    status: TransferOutcomeStatus = TransferOutcomeStatus.SUPPORTED,
+    confidence_delta: float = 0.12,
+    blocking_errors: tuple[str, ...] = (),
+) -> RealityDeltaReport:
+    return RealityDeltaReport(
+        report_id="prediction-001:reality-delta",
+        prediction_id="prediction-001",
+        target_domain_id="ci-pipeline",
+        target_intervention_id="increase-worker-count",
+        outcome_id="outcome-001",
+        observable_deltas=(
+            ObservableDelta(
+                observable_name="Completion Time",
+                predicted_direction=PredictionDirection.LIMITED_CHANGE,
+                baseline_value=121.0,
+                observed_value=122.0,
+                numeric_delta=1.0,
+                direction_matched=True,
+                range_matched=True,
+                outcome_match=OutcomeMatch.MATCHED,
+                score=1.0,
+                notes=(),
             ),
-            source="controlled-flow-fixture",
         ),
-        intervention=InterventionRecord(
-            domain_id="water-flow",
-            intervention_id="increase-input-rate",
-            values=(
-                MeasuredValue(
-                    observable_name="Input Rate",
-                    value=20.0,
-                    evidence_id="intervention-input-rate",
-                ),
-            ),
-            rationale="Increase upstream input to test the downstream limit.",
-        ),
-        outcome=OutcomeRecord(
-            domain_id="water-flow",
-            outcome_id="outcome-001",
-            observed_after_intervention_id="increase-input-rate",
-            values=(
-                MeasuredValue(
-                    observable_name="Output Rate",
-                    value=10.2,
-                    evidence_id="outcome-output-rate",
-                ),
-                MeasuredValue(
-                    observable_name="System State",
-                    value="saturated",
-                    evidence_id="outcome-state",
-                ),
-            ),
-            result_summary="Output barely changed after increased input.",
-        ),
-        support_reasons=(
-            "Outcome remained close to baseline after intervention.",
-            "State evidence preserved downstream saturation.",
-        ),
-        uncertainty_notes=(
-            "The source fixture is controlled and may omit noisy real systems.",
-        ),
+        status=status,
+        mean_score=1.0,
+        confidence_delta=confidence_delta,
+        uncertainty_notes=("Observed outcome supported bounded transfer evidence.",),
+        blocking_errors=blocking_errors,
     )
 
 
-def test_validate_source_learning_trial_accepts_supported_trial() -> None:
-    trial = make_supported_trial()
-
-    assert validate_source_learning_trial(trial) == ()
-
-
-def test_evaluate_source_learning_trial_marks_strong_source_support() -> None:
-    trial = make_supported_trial()
-
-    evidence = evaluate_source_learning_trial(trial)
-
-    assert evidence.evidence_id == "source-trial-001:source-learning"
-    assert evidence.function_id == "causal-bottleneck-v1"
-    assert evidence.source_domain_id == "water-flow"
-    assert evidence.status is SourceLearningStatus.SUPPORTED
-    assert evidence.confidence_delta == 0.08
-    assert evidence.adjusted_confidence(0.55) == 0.63
-    assert evidence.blocking_errors == ()
+def test_clamp_confidence_bounds_values() -> None:
+    assert clamp_confidence(-0.5) == 0.0
+    assert clamp_confidence(0.3456789) == 0.345679
+    assert clamp_confidence(1.5) == 1.0
 
 
-def test_evaluate_source_learning_trial_marks_weak_support_when_uncertainty_dominates() -> None:
-    supported = make_supported_trial()
-    weak_trial = SourceLearningTrial(
-        trial_id=supported.trial_id,
-        source_domain=supported.source_domain,
-        causal_function=supported.causal_function,
-        baseline_snapshot=supported.baseline_snapshot,
-        intervention=supported.intervention,
-        outcome=supported.outcome,
-        support_reasons=("Output changed less than input.",),
-        uncertainty_notes=(
-            "Unknown downstream geometry.",
-            "Unknown measurement noise.",
-            "Unknown bypass behavior.",
-        ),
+def test_classify_confidence_uses_conservative_bands() -> None:
+    assert classify_confidence(0.1) is ConfidenceBand.QUARANTINED
+    assert classify_confidence(0.3) is ConfidenceBand.LOW
+    assert classify_confidence(0.6) is ConfidenceBand.MEDIUM
+    assert classify_confidence(0.8) is ConfidenceBand.HIGH
+
+
+def test_choose_learning_disposition_promotes_supported_confident_transfer() -> None:
+    assert (
+        choose_learning_disposition(TransferOutcomeStatus.SUPPORTED, 0.67)
+        is LearningDisposition.PROMOTE
     )
 
-    evidence = evaluate_source_learning_trial(weak_trial)
 
-    assert evidence.status is SourceLearningStatus.WEAKLY_SUPPORTED
-    assert evidence.confidence_delta == 0.01
-
-
-def test_evaluate_source_learning_trial_blocks_invalid_records() -> None:
-    supported = make_supported_trial()
-    invalid_trial = SourceLearningTrial(
-        trial_id=supported.trial_id,
-        source_domain=supported.source_domain,
-        causal_function=supported.causal_function,
-        baseline_snapshot=supported.baseline_snapshot,
-        intervention=supported.intervention,
-        outcome=OutcomeRecord(
-            domain_id="water-flow",
-            outcome_id="outcome-002",
-            observed_after_intervention_id="different-intervention",
-            values=supported.outcome.values,
-            result_summary="Outcome points at the wrong intervention.",
-        ),
-        support_reasons=supported.support_reasons,
-        uncertainty_notes=supported.uncertainty_notes,
+def test_choose_learning_disposition_quarantines_low_failed_transfer() -> None:
+    assert (
+        choose_learning_disposition(TransferOutcomeStatus.FAILED, 0.31)
+        is LearningDisposition.QUARANTINE
     )
 
-    evidence = evaluate_source_learning_trial(invalid_trial)
 
-    assert evidence.status is SourceLearningStatus.BLOCKED
-    assert evidence.confidence_delta == -0.1
-    assert "outcome must reference the trial intervention" in evidence.blocking_errors
-    assert evidence.adjusted_confidence(0.05) == 0.0
-
-
-def test_validate_source_learning_trial_blocks_mismatched_function_source() -> None:
-    supported = make_supported_trial()
-    mismatched_function = CausalFunction(
-        function_id=supported.causal_function.function_id,
-        name=supported.causal_function.name,
-        family=supported.causal_function.family,
-        summary=supported.causal_function.summary,
-        variable_slots=supported.causal_function.variable_slots,
-        mechanisms=supported.causal_function.mechanisms,
-        prior_confidence=supported.causal_function.prior_confidence,
-        uncertainty_notes=supported.causal_function.uncertainty_notes,
-        learned_from_domain_id="different-domain",
-    )
-    invalid_trial = SourceLearningTrial(
-        trial_id=supported.trial_id,
-        source_domain=supported.source_domain,
-        causal_function=mismatched_function,
-        baseline_snapshot=supported.baseline_snapshot,
-        intervention=supported.intervention,
-        outcome=supported.outcome,
-        support_reasons=supported.support_reasons,
-        uncertainty_notes=supported.uncertainty_notes,
+def test_future_planning_rules_preserve_behavior_change() -> None:
+    rules = future_planning_rules_for(
+        status=TransferOutcomeStatus.FAILED,
+        disposition=LearningDisposition.QUARANTINE,
+        family_value="bottleneck",
     )
 
-    errors = validate_source_learning_trial(invalid_trial)
+    assert len(rules) == 2
+    assert "Quarantine" in rules[0]
+    assert "Block automatic reuse" in rules[1]
+
+
+def test_combine_uncertainty_notes_preserves_sources() -> None:
+    notes = combine_uncertainty_notes(
+        ("Function uncertainty.",),
+        ("Reality uncertainty.",),
+    )
+
+    assert notes == (
+        "function: Function uncertainty.",
+        "reality_delta: Reality uncertainty.",
+    )
+
+
+def test_validate_learning_inputs_accepts_matching_function_and_report() -> None:
+    assert validate_learning_inputs(make_function(), make_report()) == ()
+
+
+def test_validate_learning_inputs_blocks_lineage_mismatch() -> None:
+    function = make_function()
+    report = RealityDeltaReport(
+        report_id="different-prediction:reality-delta",
+        prediction_id="different-prediction",
+        target_domain_id="ci-pipeline",
+        target_intervention_id="increase-worker-count",
+        outcome_id="outcome-001",
+        observable_deltas=make_report().observable_deltas,
+        status=TransferOutcomeStatus.SUPPORTED,
+        mean_score=1.0,
+        confidence_delta=0.12,
+        uncertainty_notes=("Supported but mismatched.",),
+    )
+
+    errors = validate_learning_inputs(function, report)
 
     assert (
-        "causal_function learned_from_domain_id must be empty or match source "
-        "domain_id"
-    ) in errors
+        "causal_function function_id does not match report prediction lineage"
+        in errors
+    )
+
+
+def test_build_learning_update_promotes_supported_transfer() -> None:
+    update = build_learning_update(make_function(), make_report())
+
+    assert update.update_id == "prediction-001:reality-delta:learning-update"
+    assert update.function_id == "prediction-001"
+    assert update.report_id == "prediction-001:reality-delta"
+    assert update.source_confidence == 0.55
+    assert update.confidence_delta == 0.12
+    assert update.revised_confidence == 0.67
+    assert update.confidence_band is ConfidenceBand.MEDIUM
+    assert update.disposition is LearningDisposition.PROMOTE
+    assert update.should_update_future_behavior()
+    assert update.blocking_errors == ()
+    assert "cautious reuse" in update.future_planning_rules[0]
+
+
+def test_build_learning_update_quarantines_failed_low_confidence_transfer() -> None:
+    report = make_report(
+        status=TransferOutcomeStatus.FAILED,
+        confidence_delta=-0.12,
+    )
+
+    update = build_learning_update(make_function(confidence=0.45), report)
+
+    assert update.revised_confidence == 0.33
+    assert update.confidence_band is ConfidenceBand.LOW
+    assert update.disposition is LearningDisposition.QUARANTINE
+    assert "Quarantine" in update.future_planning_rules[0]
+
+
+def test_build_learning_update_weakens_invalid_report_without_promoting() -> None:
+    report = make_report(
+        status=TransferOutcomeStatus.UNSCORABLE,
+        confidence_delta=-0.08,
+        blocking_errors=("outcome missing predicted observable",),
+    )
+
+    update = build_learning_update(make_function(), report)
+
+    assert update.disposition is LearningDisposition.WEAKEN
+    assert update.confidence_delta == -0.08
+    assert update.blocking_errors == ("reality_delta report contains blocking errors",)
+    assert update.should_update_future_behavior() is False
