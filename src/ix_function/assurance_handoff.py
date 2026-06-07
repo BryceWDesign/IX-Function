@@ -384,7 +384,9 @@ def validate_assurance_handoff_packet(
 
     for trace in packet.trace_links:
         if not trace.source_artifact_id.strip():
-            errors.append(f"source_artifact_id must not be empty for {trace.trace_id!r}")
+            errors.append(
+                f"source_artifact_id must not be empty for {trace.trace_id!r}"
+            )
         if trace.target_claim_id != packet.claim.claim_id:
             errors.append(f"trace {trace.trace_id!r} must target the packet claim")
         if not trace.evidence_digest.strip():
