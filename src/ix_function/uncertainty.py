@@ -47,6 +47,14 @@ class UncertaintyState(StrEnum):
     RESOLVED = "resolved"
 
 
+class EvidenceClaimStrength(StrEnum):
+    """Claim strength requested from an uncertainty ledger."""
+
+    INTERNAL_NOTE = "internal_note"
+    BOUNDED_CANDIDATE_EVIDENCE = "bounded_candidate_evidence"
+    STRONG_TRANSFER_SUPPORT = "strong_transfer_support"
+
+
 @dataclass(frozen=True, slots=True)
 class UncertaintyItem:
     """One preserved uncertainty item with provenance."""
@@ -89,6 +97,18 @@ class UncertaintyLedger:
             if item.state in {UncertaintyState.OPEN, UncertaintyState.ESCALATED}
         )
 
+    def high_open_items(self) -> tuple[UncertaintyItem, ...]:
+        """Return open high-severity uncertainty items."""
+
+        return tuple(
+            item
+            for item in self.open_items()
+            if item.severity in {
+                UncertaintySeverity.HIGH,
+                UncertaintySeverity.BLOCKING,
+            }
+        )
+
     def maximum_severity(self) -> UncertaintySeverity:
         """Return the highest severity present in the ledger."""
 
@@ -116,6 +136,18 @@ class UncertaintyGateResult:
     allowed: bool
     maximum_severity: UncertaintySeverity
     blocking_ids: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimStrengthGateResult:
+    """Result of evaluating a requested evidence claim strength."""
+
+    ledger_id: str
+    requested_strength: EvidenceClaimStrength
+    allowed: bool
+    blocking_ids: tuple[str, ...]
+    required_actions: tuple[str, ...]
     reason: str
 
 
@@ -166,6 +198,85 @@ def evaluate_uncertainty_gate(ledger: UncertaintyLedger) -> UncertaintyGateResul
         reason=(
             "Uncertainty gate allows bounded candidate evidence while preserving "
             "all open uncertainty items for review."
+        ),
+    )
+
+
+def evaluate_claim_strength_gate(
+    ledger: UncertaintyLedger,
+    requested_strength: EvidenceClaimStrength,
+) -> ClaimStrengthGateResult:
+    """Gate a requested evidence claim strength against preserved uncertainty."""
+
+    validation_errors = validate_uncertainty_ledger(ledger)
+    if validation_errors:
+        return ClaimStrengthGateResult(
+            ledger_id=ledger.ledger_id,
+            requested_strength=requested_strength,
+            allowed=False,
+            blocking_ids=(),
+            required_actions=validation_errors,
+            reason="Claim-strength gate blocked because the ledger is invalid.",
+        )
+
+    if requested_strength is EvidenceClaimStrength.INTERNAL_NOTE:
+        return ClaimStrengthGateResult(
+            ledger_id=ledger.ledger_id,
+            requested_strength=requested_strength,
+            allowed=True,
+            blocking_ids=(),
+            required_actions=(
+                "Preserve all uncertainty items with the internal note.",
+            ),
+            reason=(
+                "Internal uncertainty documentation is allowed, but it does not "
+                "promote the transfer claim."
+            ),
+        )
+
+    blocking_items = ledger.blocking_items()
+    if blocking_items:
+        return ClaimStrengthGateResult(
+            ledger_id=ledger.ledger_id,
+            requested_strength=requested_strength,
+            allowed=False,
+            blocking_ids=tuple(item.uncertainty_id for item in blocking_items),
+            required_actions=tuple(item.mitigation for item in blocking_items),
+            reason=(
+                "Requested claim strength is blocked by escalated or blocking "
+                "uncertainty items."
+            ),
+        )
+
+    high_open_items = ledger.high_open_items()
+    if (
+        requested_strength is EvidenceClaimStrength.STRONG_TRANSFER_SUPPORT
+        and high_open_items
+    ):
+        return ClaimStrengthGateResult(
+            ledger_id=ledger.ledger_id,
+            requested_strength=requested_strength,
+            allowed=False,
+            blocking_ids=tuple(item.uncertainty_id for item in high_open_items),
+            required_actions=tuple(item.mitigation for item in high_open_items),
+            reason=(
+                "Strong transfer support is blocked until high-severity open "
+                "uncertainty is reduced or resolved."
+            ),
+        )
+
+    return ClaimStrengthGateResult(
+        ledger_id=ledger.ledger_id,
+        requested_strength=requested_strength,
+        allowed=True,
+        blocking_ids=(),
+        required_actions=(
+            "Carry remaining uncertainty into the evidence packet.",
+            "Do not represent this result as AGI proof.",
+        ),
+        reason=(
+            "Requested claim strength is allowed within bounded IX-Function "
+            "evidence language."
         ),
     )
 
