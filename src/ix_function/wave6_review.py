@@ -498,7 +498,10 @@ def replication_kill_criteria() -> tuple[str, ...]:
         "Reality-delta score cannot be reproduced.",
         "Falsification ledger is missing or bypassed.",
         "Negative controls fail to reject bad evidence.",
-        "Model-provider output overclaims AGI, deployment, or production readiness.",
+        (
+            "Model-provider output overclaims AGI proof, deployment, or "
+            "production readiness."
+        ),
         "Human review boundary is missing.",
         "Uncertainty is omitted or laundered into certainty.",
     )
