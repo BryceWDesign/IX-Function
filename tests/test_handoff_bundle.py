@@ -8,7 +8,11 @@ from ix_function.handoff_bundle import (
     validate_integrated_handoff_bundle,
 )
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
+from ix_function.trial import (
+    TransferTrialInput,
+    TransferTrialResult,
+    run_transfer_trial,
+)
 from tests.fixtures import make_trial_input
 
 
