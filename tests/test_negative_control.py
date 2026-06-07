@@ -135,6 +135,25 @@ def test_validate_negative_control_spec_rejects_empty_fields() -> None:
     assert "expected_blocking_behavior must not be empty for ''" in errors
 
 
+def test_clean_positive_chain_marks_controls_not_applicable() -> None:
+    suite = build_negative_control_suite(
+        suite_id="negative-suite-positive",
+        mapping=make_mapping(MappingQuality.COMPLETE),
+        report=make_report(TransferOutcomeStatus.SUPPORTED),
+        learning_update=make_learning_update(LearningDisposition.PROMOTE),
+        falsification_ledger=make_falsification_ledger(
+            FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE
+        ),
+    )
+
+    assert suite.passed()
+    assert suite.failed_controls() == ()
+    assert all(
+        evaluation.status is NegativeControlStatus.NOT_APPLICABLE
+        for evaluation in suite.evaluations
+    )
+
+
 def test_insufficient_mapping_control_passes_when_mapping_is_insufficient() -> None:
     spec = default_negative_controls()[0]
 
@@ -149,6 +168,23 @@ def test_insufficient_mapping_control_passes_when_mapping_is_insufficient() -> N
     assert evaluation.status is NegativeControlStatus.PASSED
     assert evaluation.is_clean()
     assert "blocked" in evaluation.reason
+
+
+def test_insufficient_mapping_control_is_not_applicable_to_clean_mapping() -> None:
+    spec = default_negative_controls()[0]
+
+    evaluation = evaluate_negative_control(
+        spec=spec,
+        mapping=make_mapping(MappingQuality.COMPLETE),
+        report=make_report(TransferOutcomeStatus.SUPPORTED),
+        learning_update=make_learning_update(LearningDisposition.PROMOTE),
+        falsification_ledger=make_falsification_ledger(
+            FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE
+        ),
+    )
+
+    assert evaluation.status is NegativeControlStatus.NOT_APPLICABLE
+    assert evaluation.is_clean()
 
 
 def test_expected_failure_control_passes_when_failure_weakens_learning() -> None:
@@ -224,6 +260,24 @@ def test_build_negative_control_suite_collects_evaluations() -> None:
     assert suite.suite_id == "negative-suite-001"
     assert len(suite.evaluations) == 5
     assert validate_negative_control_suite(suite) == ()
+
+
+def test_anti_theater_gate_allows_clean_positive_chain() -> None:
+    suite = build_negative_control_suite(
+        suite_id="negative-suite-positive",
+        mapping=make_mapping(MappingQuality.COMPLETE),
+        report=make_report(TransferOutcomeStatus.SUPPORTED),
+        learning_update=make_learning_update(LearningDisposition.PROMOTE),
+        falsification_ledger=make_falsification_ledger(
+            FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE
+        ),
+    )
+
+    result = evaluate_anti_theater_gate(suite)
+
+    assert result.allowed
+    assert result.failed_control_ids == ()
+    assert "positive transfer chain" in result.reason
 
 
 def test_anti_theater_gate_allows_clean_negative_controls() -> None:
