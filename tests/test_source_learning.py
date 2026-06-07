@@ -72,6 +72,7 @@ def make_report(
     return RealityDeltaReport(
         report_id="prediction-001:reality-delta",
         prediction_id="prediction-001",
+        function_id="prediction-001",
         target_domain_id="ci-pipeline",
         target_intervention_id="increase-worker-count",
         outcome_id="outcome-001",
@@ -157,6 +158,7 @@ def test_validate_learning_inputs_blocks_lineage_mismatch() -> None:
     report = RealityDeltaReport(
         report_id="different-prediction:reality-delta",
         prediction_id="different-prediction",
+        function_id="different-prediction",
         target_domain_id="ci-pipeline",
         target_intervention_id="increase-worker-count",
         outcome_id="outcome-001",
@@ -170,7 +172,7 @@ def test_validate_learning_inputs_blocks_lineage_mismatch() -> None:
     errors = validate_learning_inputs(function, report)
 
     assert (
-        "causal_function function_id does not match report prediction lineage"
+        "causal_function function_id must match report function_id"
         in errors
     )
 
