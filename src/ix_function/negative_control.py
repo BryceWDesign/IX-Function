@@ -3,6 +3,10 @@
 Negative controls prove the harness does not pass every transfer attempt. A
 serious cross-domain causal-transfer system must be able to reject bad mappings,
 same-domain theater, unsupported outcomes, and leaked-answer predictions.
+
+Negative controls are scenario-specific pressure checks. A clean positive trial
+must not be failed merely because it is not itself an insufficient-mapping,
+same-domain, leaked-outcome, shuffled-mapping, or expected-failure fixture.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ class NegativeControlStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     BLOCKED = "blocked"
+    NOT_APPLICABLE = "not_applicable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,9 +60,12 @@ class NegativeControlEvaluation:
     evidence_refs: tuple[str, ...]
 
     def is_clean(self) -> bool:
-        """Return whether the negative control behaved as expected."""
+        """Return whether the negative control did not expose theater."""
 
-        return self.status is NegativeControlStatus.PASSED
+        return self.status in {
+            NegativeControlStatus.PASSED,
+            NegativeControlStatus.NOT_APPLICABLE,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,8 +84,17 @@ class NegativeControlSuite:
             if evaluation.status is NegativeControlStatus.FAILED
         )
 
+    def applicable_controls(self) -> tuple[NegativeControlEvaluation, ...]:
+        """Return negative controls that applied to this evidence chain."""
+
+        return tuple(
+            evaluation
+            for evaluation in self.evaluations
+            if evaluation.status is not NegativeControlStatus.NOT_APPLICABLE
+        )
+
     def passed(self) -> bool:
-        """Return whether every negative control behaved as expected."""
+        """Return whether every applicable negative control behaved correctly."""
 
         return bool(self.evaluations) and not self.failed_controls()
 
@@ -155,10 +172,13 @@ def evaluate_negative_control(
     """Evaluate one negative control against the transfer evidence chain."""
 
     if spec.kind is NegativeControlKind.INSUFFICIENT_MAPPING:
-        passed = (
-            mapping.quality is MappingQuality.INSUFFICIENT
-            or falsification_ledger.verdict is FalsificationVerdict.KILL_CLAIM
-        )
+        if mapping.quality is not MappingQuality.INSUFFICIENT:
+            return _not_applicable(
+                spec=spec,
+                reason="Evidence chain is not an insufficient-mapping fixture.",
+                evidence_refs=(mapping.function_id, mapping.target_domain_id),
+            )
+        passed = falsification_ledger.verdict is FalsificationVerdict.KILL_CLAIM
         return _evaluation_from_bool(
             spec=spec,
             passed=passed,
@@ -168,6 +188,12 @@ def evaluate_negative_control(
         )
 
     if spec.kind is NegativeControlKind.SAME_DOMAIN_THEATER:
+        if falsification_ledger.verdict is FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE:
+            return _not_applicable(
+                spec=spec,
+                reason="Evidence chain is not a same-domain-theater fixture.",
+                evidence_refs=(falsification_ledger.ledger_id,),
+            )
         passed = falsification_ledger.verdict in {
             FalsificationVerdict.KILL_CLAIM,
             FalsificationVerdict.DOWNGRADE_CLAIM,
@@ -181,16 +207,19 @@ def evaluate_negative_control(
         )
 
     if spec.kind is NegativeControlKind.EXPECTED_FAILURE:
-        passed = (
-            report.status in {
-                TransferOutcomeStatus.FAILED,
-                TransferOutcomeStatus.UNSCORABLE,
-            }
-            and learning_update.disposition in {
-                LearningDisposition.WEAKEN,
-                LearningDisposition.QUARANTINE,
-            }
-        )
+        if report.status not in {
+            TransferOutcomeStatus.FAILED,
+            TransferOutcomeStatus.UNSCORABLE,
+        }:
+            return _not_applicable(
+                spec=spec,
+                reason="Evidence chain is not an expected-failure fixture.",
+                evidence_refs=(report.report_id,),
+            )
+        passed = learning_update.disposition in {
+            LearningDisposition.WEAKEN,
+            LearningDisposition.QUARANTINE,
+        }
         return _evaluation_from_bool(
             spec=spec,
             passed=passed,
@@ -200,9 +229,19 @@ def evaluate_negative_control(
         )
 
     if spec.kind is NegativeControlKind.OUTCOME_LEAKAGE:
-        passed = (
+        leakage_signals = (
             report.status is TransferOutcomeStatus.UNSCORABLE
             or bool(report.blocking_errors)
+            or bool(learning_update.blocking_errors)
+        )
+        if not leakage_signals:
+            return _not_applicable(
+                spec=spec,
+                reason="Evidence chain is not an outcome-leakage fixture.",
+                evidence_refs=(report.report_id, learning_update.update_id),
+            )
+        passed = (
+            bool(report.blocking_errors)
             or bool(learning_update.blocking_errors)
             or falsification_ledger.verdict is FalsificationVerdict.KILL_CLAIM
         )
@@ -215,15 +254,24 @@ def evaluate_negative_control(
         )
 
     if spec.kind is NegativeControlKind.SHUFFLED_MAPPING:
-        passed = (
+        weak_mapping_signals = (
             mapping.quality in {
                 MappingQuality.AMBIGUOUS,
                 MappingQuality.INSUFFICIENT,
             }
             or bool(mapping.warnings)
-            or falsification_ledger.verdict is not (
-                FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE
+        )
+        if not weak_mapping_signals:
+            return _not_applicable(
+                spec=spec,
+                reason="Evidence chain is not a shuffled-mapping fixture.",
+                evidence_refs=(mapping.function_id, mapping.target_domain_id),
             )
+        passed = (
+            mapping.quality is MappingQuality.INSUFFICIENT
+            or bool(mapping.warnings)
+            or falsification_ledger.verdict
+            is not FalsificationVerdict.ALLOW_BOUNDED_EVIDENCE
         )
         return _evaluation_from_bool(
             spec=spec,
@@ -294,13 +342,29 @@ def evaluate_anti_theater_gate(
             ),
         )
 
+    applicable = suite.applicable_controls()
+    if not applicable:
+        return AntiTheaterGateResult(
+            suite_id=suite.suite_id,
+            allowed=True,
+            failed_control_ids=(),
+            reason=(
+                "Anti-theater gate allows bounded evidence; no negative-control "
+                "fixture applied to this positive transfer chain."
+            ),
+            required_actions=(
+                "Run dedicated negative-control fixtures in the broader suite.",
+                "Do not represent a positive transfer trial as AGI proof.",
+            ),
+        )
+
     return AntiTheaterGateResult(
         suite_id=suite.suite_id,
         allowed=True,
         failed_control_ids=(),
         reason=(
-            "Anti-theater gate allows bounded evidence because negative controls "
-            "did not promote bad transfer evidence."
+            "Anti-theater gate allows bounded evidence because applicable "
+            "negative controls did not promote bad transfer evidence."
         ),
         required_actions=(
             "Preserve negative-control results in the evidence packet.",
@@ -367,5 +431,20 @@ def _evaluation_from_bool(
         if passed
         else NegativeControlStatus.FAILED,
         reason=passed_reason if passed else failed_reason,
+        evidence_refs=evidence_refs,
+    )
+
+
+def _not_applicable(
+    *,
+    spec: NegativeControlSpec,
+    reason: str,
+    evidence_refs: tuple[str, ...],
+) -> NegativeControlEvaluation:
+    return NegativeControlEvaluation(
+        control_id=spec.control_id,
+        kind=spec.kind,
+        status=NegativeControlStatus.NOT_APPLICABLE,
+        reason=reason,
         evidence_refs=evidence_refs,
     )
