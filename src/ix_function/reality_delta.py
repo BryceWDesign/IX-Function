@@ -10,7 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ix_function.observation import DomainSnapshot, ObservationValue, OutcomeRecord
+from ix_function.observation import (
+    DomainSnapshot,
+    MeasuredValue,
+    ObservationValue,
+    OutcomeRecord,
+)
 from ix_function.prediction import (
     PredictedObservable,
     PredictionDirection,
@@ -124,16 +129,13 @@ def build_reality_delta_report(
         for predicted in prediction.predicted_observables
     )
 
+    status = classify_transfer_outcome(observable_deltas)
     scored_deltas = tuple(
         delta
         for delta in observable_deltas
         if delta.outcome_match is not OutcomeMatch.UNSCORABLE
     )
-    mean_score = round(
-        sum(delta.score for delta in scored_deltas) / len(scored_deltas),
-        6,
-    )
-    status = classify_transfer_outcome(observable_deltas)
+    mean_score = mean_observable_score(scored_deltas)
     uncertainty_notes = build_reality_uncertainty_notes(observable_deltas, status)
     confidence_delta = confidence_delta_for_status(status, mean_score)
 
@@ -244,6 +246,17 @@ def classify_transfer_outcome(
     return TransferOutcomeStatus.FAILED
 
 
+def mean_observable_score(observable_deltas: tuple[ObservableDelta, ...]) -> float:
+    """Return mean score while safely handling all-unscorable outcomes."""
+
+    if not observable_deltas:
+        return 0.0
+    return round(
+        sum(delta.score for delta in observable_deltas) / len(observable_deltas),
+        6,
+    )
+
+
 def confidence_delta_for_status(
     status: TransferOutcomeStatus,
     mean_score: float,
@@ -289,7 +302,7 @@ def numeric_value(value: ObservationValue | None) -> float | None:
     return None
 
 
-def outcome_value_index(outcome: OutcomeRecord) -> dict[str, object]:
+def outcome_value_index(outcome: OutcomeRecord) -> dict[str, MeasuredValue]:
     """Return outcome measured values keyed by normalized observable name."""
 
     return {value.normalized_observable_name(): value for value in outcome.values}
