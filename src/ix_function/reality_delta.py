@@ -185,7 +185,9 @@ def score_predicted_observable(
             range_matched=None,
             outcome_match=OutcomeMatch.UNSCORABLE,
             score=0.0,
-            notes=tuple(notes or ("numeric baseline and observed values are required",)),
+            notes=tuple(
+                notes or ("numeric baseline and observed values are required",)
+            ),
         )
 
     tolerance = predicted.tolerance if predicted.tolerance is not None else 0.0
@@ -237,7 +239,10 @@ def classify_transfer_outcome(
 
     if not observable_deltas:
         return TransferOutcomeStatus.UNSCORABLE
-    if all(delta.outcome_match is OutcomeMatch.UNSCORABLE for delta in observable_deltas):
+    if all(
+        delta.outcome_match is OutcomeMatch.UNSCORABLE
+        for delta in observable_deltas
+    ):
         return TransferOutcomeStatus.UNSCORABLE
     if all(delta.outcome_match is OutcomeMatch.MATCHED for delta in observable_deltas):
         return TransferOutcomeStatus.SUPPORTED
@@ -369,7 +374,8 @@ def validate_reality_delta_inputs(
         predicted_name = predicted.normalized_observable_name()
         if predicted_name not in baseline_names:
             errors.append(
-                f"baseline is missing predicted observable {predicted.observable_name!r}"
+                "baseline is missing predicted observable "
+                f"{predicted.observable_name!r}"
             )
         if predicted_name not in outcome_names:
             errors.append(
