@@ -101,6 +101,7 @@ def make_report(
     return RealityDeltaReport(
         report_id="prediction-001:reality-delta",
         prediction_id="prediction-001",
+        function_id="causal-bottleneck-v1",
         target_domain_id="ci-pipeline",
         target_intervention_id="increase-worker-count",
         outcome_id="outcome-001",
