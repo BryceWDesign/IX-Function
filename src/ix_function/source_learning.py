@@ -1,9 +1,8 @@
-"""Source-domain learning evidence for IX-Function.
+"""Learning updates from scored transfer outcomes.
 
-This module records whether a causal function has source-domain support before
-it is allowed to become a transfer candidate. It does not prove the function is
-universal; it only creates reviewable evidence that the function was learned or
-supported in a bounded source domain.
+IX-Function only matters if reality feedback changes future behavior. This
+module converts scored reality-delta reports into bounded confidence revisions,
+planning cautions, and promotion or quarantine decisions for causal functions.
 """
 
 from __future__ import annotations
@@ -12,178 +11,228 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from ix_function.causal_function import CausalFunction
-from ix_function.domain import DomainProfile, validate_domain_profile
-from ix_function.observation import (
-    DomainSnapshot,
-    InterventionRecord,
-    OutcomeRecord,
-    validate_intervention_against_domain,
-    validate_outcome_against_domain,
-    validate_snapshot_against_domain,
-)
+from ix_function.reality_delta import RealityDeltaReport, TransferOutcomeStatus
 
 
-class SourceLearningStatus(StrEnum):
-    """Status of a causal function inside its source-domain evidence record."""
+class ConfidenceBand(StrEnum):
+    """Coarse confidence band after reality feedback is applied."""
 
-    SUPPORTED = "supported"
-    WEAKLY_SUPPORTED = "weakly_supported"
-    BLOCKED = "blocked"
+    QUARANTINED = "quarantined"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class LearningDisposition(StrEnum):
+    """How future planning should treat the causal function."""
+
+    PROMOTE = "promote"
+    RETAIN = "retain"
+    WEAKEN = "weaken"
+    QUARANTINE = "quarantine"
 
 
 @dataclass(frozen=True, slots=True)
-class SourceLearningEvidence:
-    """Evidence that a causal function has support in a source domain."""
+class TransferLearningUpdate:
+    """Bounded learning update produced from a reality-delta report."""
 
-    evidence_id: str
+    update_id: str
     function_id: str
-    source_domain_id: str
-    baseline_snapshot_id: str
-    intervention_id: str
-    outcome_id: str
-    status: SourceLearningStatus
+    report_id: str
+    source_confidence: float
     confidence_delta: float
-    support_reasons: tuple[str, ...]
+    revised_confidence: float
+    confidence_band: ConfidenceBand
+    disposition: LearningDisposition
+    future_planning_rules: tuple[str, ...]
     uncertainty_notes: tuple[str, ...]
     blocking_errors: tuple[str, ...] = ()
 
-    def adjusted_confidence(self, prior_confidence: float) -> float:
-        """Return confidence after applying the bounded source-learning delta."""
+    def should_update_future_behavior(self) -> bool:
+        """Return whether the update contains behavior-changing guidance."""
 
-        return min(1.0, max(0.0, round(prior_confidence + self.confidence_delta, 6)))
-
-
-@dataclass(frozen=True, slots=True)
-class SourceLearningTrial:
-    """A bounded source-domain trial used to support a causal function."""
-
-    trial_id: str
-    source_domain: DomainProfile
-    causal_function: CausalFunction
-    baseline_snapshot: DomainSnapshot
-    intervention: InterventionRecord
-    outcome: OutcomeRecord
-    support_reasons: tuple[str, ...]
-    uncertainty_notes: tuple[str, ...]
+        return bool(self.future_planning_rules) and not self.blocking_errors
 
 
-def evaluate_source_learning_trial(
-    trial: SourceLearningTrial,
-    *,
-    strong_support_threshold: int = 2,
-) -> SourceLearningEvidence:
-    """Evaluate whether a source trial supports a causal function.
+def build_learning_update(
+    causal_function: CausalFunction,
+    report: RealityDeltaReport,
+) -> TransferLearningUpdate:
+    """Build a future-behavior update from scored reality feedback."""
 
-    The function is deliberately conservative. It validates the domain and all
-    observations first, blocks malformed records, then assigns bounded support
-    based on declared reasons and uncertainty instead of pretending certainty.
-    """
+    blocking_errors = validate_learning_inputs(causal_function, report)
+    revised_confidence = clamp_confidence(
+        causal_function.prior_confidence + report.confidence_delta
+    )
+    confidence_band = classify_confidence(revised_confidence)
 
-    blocking_errors = list(validate_source_learning_trial(trial))
     if blocking_errors:
-        return SourceLearningEvidence(
-            evidence_id=f"{trial.trial_id}:source-learning",
-            function_id=trial.causal_function.function_id,
-            source_domain_id=trial.source_domain.domain_id,
-            baseline_snapshot_id=trial.baseline_snapshot.snapshot_id,
-            intervention_id=trial.intervention.intervention_id,
-            outcome_id=trial.outcome.outcome_id,
-            status=SourceLearningStatus.BLOCKED,
-            confidence_delta=-0.1,
-            support_reasons=(),
-            uncertainty_notes=(
-                "Source learning was blocked because the trial record is invalid.",
+        return TransferLearningUpdate(
+            update_id=f"{report.report_id}:learning-update",
+            function_id=causal_function.function_id,
+            report_id=report.report_id,
+            source_confidence=causal_function.prior_confidence,
+            confidence_delta=min(report.confidence_delta, 0.0),
+            revised_confidence=revised_confidence,
+            confidence_band=confidence_band,
+            disposition=LearningDisposition.WEAKEN,
+            future_planning_rules=(
+                "Do not use this transfer result to strengthen future plans "
+                "until blocking errors are resolved.",
             ),
-            blocking_errors=tuple(blocking_errors),
+            uncertainty_notes=(
+                "Learning update was generated from an invalid function/report pair.",
+            ),
+            blocking_errors=blocking_errors,
         )
 
-    support_count = len(trial.support_reasons)
-    uncertainty_count = len(trial.uncertainty_notes)
-
-    if support_count >= strong_support_threshold and uncertainty_count <= 2:
-        status = SourceLearningStatus.SUPPORTED
-        confidence_delta = 0.08
-    else:
-        status = SourceLearningStatus.WEAKLY_SUPPORTED
-        confidence_delta = 0.03
-
-    if uncertainty_count >= support_count:
-        confidence_delta = min(confidence_delta, 0.01)
-
-    return SourceLearningEvidence(
-        evidence_id=f"{trial.trial_id}:source-learning",
-        function_id=trial.causal_function.function_id,
-        source_domain_id=trial.source_domain.domain_id,
-        baseline_snapshot_id=trial.baseline_snapshot.snapshot_id,
-        intervention_id=trial.intervention.intervention_id,
-        outcome_id=trial.outcome.outcome_id,
-        status=status,
-        confidence_delta=confidence_delta,
-        support_reasons=trial.support_reasons,
-        uncertainty_notes=trial.uncertainty_notes,
+    disposition = choose_learning_disposition(report.status, revised_confidence)
+    return TransferLearningUpdate(
+        update_id=f"{report.report_id}:learning-update",
+        function_id=causal_function.function_id,
+        report_id=report.report_id,
+        source_confidence=causal_function.prior_confidence,
+        confidence_delta=report.confidence_delta,
+        revised_confidence=revised_confidence,
+        confidence_band=confidence_band,
+        disposition=disposition,
+        future_planning_rules=future_planning_rules_for(
+            status=report.status,
+            disposition=disposition,
+            family_value=causal_function.family.value,
+        ),
+        uncertainty_notes=combine_uncertainty_notes(
+            causal_function.uncertainty_notes,
+            report.uncertainty_notes,
+        ),
         blocking_errors=(),
     )
 
 
-def validate_source_learning_trial(trial: SourceLearningTrial) -> tuple[str, ...]:
-    """Return validation errors for a source-learning trial."""
+def clamp_confidence(value: float) -> float:
+    """Clamp confidence into the closed interval [0.0, 1.0]."""
+
+    return min(1.0, max(0.0, round(value, 6)))
+
+
+def classify_confidence(confidence: float) -> ConfidenceBand:
+    """Classify bounded confidence into a reviewable coarse band."""
+
+    if confidence < 0.2:
+        return ConfidenceBand.QUARANTINED
+    if confidence < 0.5:
+        return ConfidenceBand.LOW
+    if confidence < 0.75:
+        return ConfidenceBand.MEDIUM
+    return ConfidenceBand.HIGH
+
+
+def choose_learning_disposition(
+    status: TransferOutcomeStatus,
+    revised_confidence: float,
+) -> LearningDisposition:
+    """Choose how future planning should treat the causal function."""
+
+    if status is TransferOutcomeStatus.SUPPORTED:
+        if revised_confidence >= 0.6:
+            return LearningDisposition.PROMOTE
+        return LearningDisposition.RETAIN
+    if status is TransferOutcomeStatus.MIXED:
+        if revised_confidence < 0.35:
+            return LearningDisposition.WEAKEN
+        return LearningDisposition.RETAIN
+    if status is TransferOutcomeStatus.FAILED:
+        if revised_confidence < 0.4:
+            return LearningDisposition.QUARANTINE
+        return LearningDisposition.WEAKEN
+    if status is TransferOutcomeStatus.UNSCORABLE:
+        if revised_confidence < 0.25:
+            return LearningDisposition.QUARANTINE
+        return LearningDisposition.WEAKEN
+    raise AssertionError(f"Unhandled transfer outcome status: {status!r}")
+
+
+def future_planning_rules_for(
+    *,
+    status: TransferOutcomeStatus,
+    disposition: LearningDisposition,
+    family_value: str,
+) -> tuple[str, ...]:
+    """Return behavior-changing planning rules for future transfer attempts."""
+
+    if status is TransferOutcomeStatus.SUPPORTED:
+        return (
+            f"Permit cautious reuse of {family_value!r} causal structure when "
+            "a future target domain exposes comparable roles and measurable "
+            "outcomes.",
+            "Require a new pre-outcome prediction for every future transfer; "
+            "prior support is not automatic approval.",
+        )
+
+    if status is TransferOutcomeStatus.MIXED:
+        return (
+            f"Retain {family_value!r} causal structure as plausible but require "
+            "additional target-domain measurements before stronger reuse.",
+            "Prefer narrower predictions and larger uncertainty bands for the "
+            "next related transfer trial.",
+        )
+
+    if status is TransferOutcomeStatus.FAILED:
+        if disposition is LearningDisposition.QUARANTINE:
+            return (
+                f"Quarantine {family_value!r} transfer for this target pattern "
+                "until new source or target evidence explains the failure.",
+                "Block automatic reuse in future plans that share the same "
+                "failed mapping pattern.",
+            )
+        return (
+            f"Weaken {family_value!r} transfer confidence for future plans.",
+            "Require an alternative causal explanation before trying the same "
+            "mapping pattern again.",
+        )
+
+    if status is TransferOutcomeStatus.UNSCORABLE:
+        return (
+            f"Do not strengthen {family_value!r} transfer confidence from this "
+            "trial because the outcome could not be scored.",
+            "Require complete baseline and outcome measurements before the next "
+            "learning update.",
+        )
+
+    raise AssertionError(f"Unhandled transfer outcome status: {status!r}")
+
+
+def combine_uncertainty_notes(
+    function_notes: tuple[str, ...],
+    report_notes: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Combine function and report uncertainty notes without losing provenance."""
+
+    notes: list[str] = []
+    notes.extend(f"function: {note}" for note in function_notes)
+    notes.extend(f"reality_delta: {note}" for note in report_notes)
+    if not notes:
+        notes.append("No uncertainty notes were provided; confidence must not rise.")
+    return tuple(notes)
+
+
+def validate_learning_inputs(
+    causal_function: CausalFunction,
+    report: RealityDeltaReport,
+) -> tuple[str, ...]:
+    """Return blocking errors for a function/report learning update."""
 
     errors: list[str] = []
-    if not trial.trial_id.strip():
-        errors.append("trial_id must not be empty")
-    if trial.causal_function.learned_from_domain_id not in {
-        None,
-        trial.source_domain.domain_id,
-    }:
+    if causal_function.function_id != report.prediction_id.split(":")[0]:
         errors.append(
-            "causal_function learned_from_domain_id must be empty or match "
-            "source domain_id"
+            "causal_function function_id does not match report prediction lineage"
         )
-    if not trial.support_reasons:
-        errors.append("support_reasons must not be empty")
-    elif any(not reason.strip() for reason in trial.support_reasons):
-        errors.append("support_reasons must not contain empty reasons")
-    if not trial.uncertainty_notes:
-        errors.append("uncertainty_notes must not be empty")
-    elif any(not note.strip() for note in trial.uncertainty_notes):
-        errors.append("uncertainty_notes must not contain empty notes")
-
-    errors.extend(
-        f"source domain: {error}"
-        for error in validate_domain_profile(trial.source_domain)
-    )
-    errors.extend(
-        f"baseline snapshot: {error}"
-        for error in validate_snapshot_against_domain(
-            trial.source_domain,
-            trial.baseline_snapshot,
-        )
-    )
-    errors.extend(
-        f"intervention: {error}"
-        for error in validate_intervention_against_domain(
-            trial.source_domain,
-            trial.intervention,
-        )
-    )
-    errors.extend(
-        f"outcome: {error}"
-        for error in validate_outcome_against_domain(
-            trial.source_domain,
-            trial.outcome,
-        )
-    )
-
-    if trial.baseline_snapshot.domain_id != trial.source_domain.domain_id:
-        errors.append("baseline snapshot must belong to source domain")
-    if trial.intervention.domain_id != trial.source_domain.domain_id:
-        errors.append("intervention must belong to source domain")
-    if trial.outcome.domain_id != trial.source_domain.domain_id:
-        errors.append("outcome must belong to source domain")
-    if (
-        trial.outcome.observed_after_intervention_id
-        != trial.intervention.intervention_id
-    ):
-        errors.append("outcome must reference the trial intervention")
-
+    if report.blocking_errors:
+        errors.append("reality_delta report contains blocking errors")
+    if not 0.0 <= causal_function.prior_confidence <= 1.0:
+        errors.append("causal_function prior_confidence must be between 0.0 and 1.0")
+    if not report.report_id.strip():
+        errors.append("report_id must not be empty")
+    if not report.uncertainty_notes:
+        errors.append("report uncertainty_notes must not be empty")
     return tuple(errors)
