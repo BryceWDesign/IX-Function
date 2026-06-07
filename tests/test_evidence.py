@@ -7,6 +7,7 @@ from ix_function.evidence import (
     EvidenceArtifact,
     EvidenceArtifactType,
     EvidencePacket,
+    JsonValue,
     artifact_payload_for_object,
     build_evidence_packet,
     build_trial_evidence_packet,
@@ -35,8 +36,8 @@ class FixtureArtifact:
 
 
 def test_canonical_json_is_deterministic_for_key_order() -> None:
-    left = {"b": 2, "a": {"d": 4, "c": 3}}
-    right = {"a": {"c": 3, "d": 4}, "b": 2}
+    left: JsonValue = {"b": 2, "a": {"d": 4, "c": 3}}
+    right: JsonValue = {"a": {"c": 3, "d": 4}, "b": 2}
 
     assert canonical_json(left) == canonical_json(right)
     assert sha256_for_json(left) == sha256_for_json(right)
