@@ -16,17 +16,19 @@ from ix_function.reality_delta import (
     TransferOutcomeStatus,
 )
 from ix_function.uncertainty import (
+    EvidenceClaimStrength,
     UncertaintyItem,
     UncertaintyKind,
     UncertaintyLedger,
     UncertaintySeverity,
     UncertaintyState,
     build_uncertainty_ledger,
+    evaluate_claim_strength_gate,
     evaluate_uncertainty_gate,
+    items_from_learning_update,
     items_from_mapping,
     items_from_prediction,
     items_from_reality_delta,
-    items_from_learning_update,
     validate_uncertainty_ledger,
 )
 
@@ -47,6 +49,25 @@ def make_mapping(quality: MappingQuality = MappingQuality.AMBIGUOUS) -> Transfer
         coverage_score=1.0 if quality is not MappingQuality.INSUFFICIENT else 0.5,
         ambiguity_score=1.0 if quality is MappingQuality.AMBIGUOUS else 0.0,
         warnings=("target observable reuse requires review",),
+    )
+
+
+def make_clean_mapping() -> TransferMapping:
+    return TransferMapping(
+        function_id="causal-bottleneck-v1",
+        target_domain_id="ci-pipeline",
+        slot_mappings=(
+            SlotMapping(
+                slot_id="final_output",
+                observable_name="Completion Time",
+                score=1.0,
+                uncertainty_notes=(),
+            ),
+        ),
+        quality=MappingQuality.COMPLETE,
+        coverage_score=1.0,
+        ambiguity_score=0.0,
+        warnings=(),
     )
 
 
@@ -224,10 +245,102 @@ def test_uncertainty_gate_blocks_escalated_uncertainty() -> None:
     result = evaluate_uncertainty_gate(ledger)
 
     assert result.allowed is False
-    assert result.maximum_severity() if False else True
     assert result.maximum_severity is UncertaintySeverity.BLOCKING
     assert result.blocking_ids
     assert "blocked stronger transfer claims" in result.reason
+
+
+def test_claim_strength_gate_allows_internal_notes_with_blockers() -> None:
+    ledger = build_uncertainty_ledger(
+        ledger_id="ledger-004",
+        mapping=make_mapping(MappingQuality.INSUFFICIENT),
+        prediction=make_prediction(),
+        report=make_report(TransferOutcomeStatus.UNSCORABLE),
+        learning_update=make_update(),
+    )
+
+    result = evaluate_claim_strength_gate(
+        ledger,
+        EvidenceClaimStrength.INTERNAL_NOTE,
+    )
+
+    assert result.allowed
+    assert result.required_actions == (
+        "Preserve all uncertainty items with the internal note.",
+    )
+    assert "does not promote" in result.reason
+
+
+def test_claim_strength_gate_blocks_candidate_evidence_with_blockers() -> None:
+    ledger = build_uncertainty_ledger(
+        ledger_id="ledger-005",
+        mapping=make_mapping(MappingQuality.INSUFFICIENT),
+        prediction=make_prediction(),
+        report=make_report(TransferOutcomeStatus.UNSCORABLE),
+        learning_update=make_update(),
+    )
+
+    result = evaluate_claim_strength_gate(
+        ledger,
+        EvidenceClaimStrength.BOUNDED_CANDIDATE_EVIDENCE,
+    )
+
+    assert result.allowed is False
+    assert result.blocking_ids
+    assert "blocked" in result.reason
+
+
+def test_claim_strength_gate_blocks_strong_support_with_high_open_items() -> None:
+    ledger = build_uncertainty_ledger(
+        ledger_id="ledger-006",
+        mapping=make_mapping(),
+        prediction=make_prediction(),
+        report=make_report(TransferOutcomeStatus.MIXED),
+        learning_update=make_update(),
+    )
+
+    result = evaluate_claim_strength_gate(
+        ledger,
+        EvidenceClaimStrength.STRONG_TRANSFER_SUPPORT,
+    )
+
+    assert result.allowed is False
+    assert result.blocking_ids
+    assert "high-severity open uncertainty" in result.reason
+
+
+def test_claim_strength_gate_allows_bounded_evidence_with_nonblocking_items() -> None:
+    ledger = build_uncertainty_ledger(
+        ledger_id="ledger-007",
+        mapping=make_clean_mapping(),
+        prediction=make_prediction(),
+        report=make_report(TransferOutcomeStatus.SUPPORTED),
+        learning_update=make_update(),
+    )
+
+    result = evaluate_claim_strength_gate(
+        ledger,
+        EvidenceClaimStrength.BOUNDED_CANDIDATE_EVIDENCE,
+    )
+
+    assert result.allowed
+    assert result.blocking_ids == ()
+    assert "bounded IX-Function evidence language" in result.reason
+
+
+def test_claim_strength_gate_blocks_invalid_ledgers() -> None:
+    ledger = UncertaintyLedger(
+        ledger_id="",
+        items=(),
+    )
+
+    result = evaluate_claim_strength_gate(
+        ledger,
+        EvidenceClaimStrength.BOUNDED_CANDIDATE_EVIDENCE,
+    )
+
+    assert result.allowed is False
+    assert result.required_actions == ("ledger_id must not be empty",)
 
 
 def test_validate_uncertainty_ledger_rejects_duplicate_item_ids() -> None:
@@ -241,7 +354,7 @@ def test_validate_uncertainty_ledger_rejects_duplicate_item_ids() -> None:
         mitigation="Mitigation.",
     )
     ledger = UncertaintyLedger(
-        ledger_id="ledger-004",
+        ledger_id="ledger-008",
         items=(item, item),
     )
 
