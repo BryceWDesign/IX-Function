@@ -1,17 +1,37 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import StrEnum
+
 from ix_function.evidence import (
     EvidenceArtifact,
     EvidenceArtifactType,
     EvidencePacket,
+    artifact_payload_for_object,
     build_evidence_packet,
+    build_trial_evidence_packet,
     canonical_json,
     create_evidence_artifact,
+    create_evidence_artifact_from_object,
     packet_manifest_payload,
     sha256_for_json,
+    to_json_value,
     validate_evidence_artifact,
     validate_evidence_packet,
 )
+from ix_function.trial import run_transfer_trial
+from tests.fixtures import make_trial_input
+
+
+class FixtureState(StrEnum):
+    READY = "ready"
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureArtifact:
+    artifact_id: str
+    state: FixtureState
+    notes: tuple[str, ...]
 
 
 def test_canonical_json_is_deterministic_for_key_order() -> None:
@@ -20,6 +40,21 @@ def test_canonical_json_is_deterministic_for_key_order() -> None:
 
     assert canonical_json(left) == canonical_json(right)
     assert sha256_for_json(left) == sha256_for_json(right)
+
+
+def test_to_json_value_serializes_dataclasses_enums_and_tuples() -> None:
+    fixture = FixtureArtifact(
+        artifact_id="fixture-001",
+        state=FixtureState.READY,
+        notes=("bounded evidence only",),
+    )
+
+    assert to_json_value(fixture) == {
+        "artifact_id": "fixture-001",
+        "state": "ready",
+        "notes": ["bounded evidence only"],
+    }
+    assert artifact_payload_for_object(fixture)["state"] == "ready"
 
 
 def test_create_evidence_artifact_hashes_identity_type_and_payload() -> None:
@@ -35,6 +70,27 @@ def test_create_evidence_artifact_hashes_identity_type_and_payload() -> None:
     assert artifact.artifact_id == "trial-001:trial-summary"
     assert artifact.artifact_type is EvidenceArtifactType.TRIAL_SUMMARY
     assert len(artifact.sha256_digest) == 64
+    assert validate_evidence_artifact(artifact) == ()
+
+
+def test_create_evidence_artifact_from_object_uses_serialized_payload() -> None:
+    fixture = FixtureArtifact(
+        artifact_id="fixture-001",
+        state=FixtureState.READY,
+        notes=("bounded evidence only",),
+    )
+
+    artifact = create_evidence_artifact_from_object(
+        artifact_id="fixture-001",
+        artifact_type=EvidenceArtifactType.TRIAL_SUMMARY,
+        value=fixture,
+    )
+
+    assert artifact.payload == {
+        "artifact_id": "fixture-001",
+        "state": "ready",
+        "notes": ["bounded evidence only"],
+    }
     assert validate_evidence_artifact(artifact) == ()
 
 
@@ -79,6 +135,28 @@ def test_build_evidence_packet_creates_manifest_digest() -> None:
             },
         ],
     }
+
+
+def test_build_trial_evidence_packet_serializes_real_trial_result() -> None:
+    result = run_transfer_trial(make_trial_input())
+
+    packet = build_trial_evidence_packet(result)
+    artifact_index = packet.artifact_index()
+
+    assert packet.packet_id == "trial-001:evidence-packet"
+    assert len(packet.artifacts) == 11
+    assert validate_evidence_packet(packet) == ()
+    assert artifact_index["trial-001:trial-summary"].payload["status"] == (
+        "bounded_evidence_allowed"
+    )
+    assert artifact_index["trial-001:reality-delta"].payload["status"] == "supported"
+    assert artifact_index["trial-001:learning-update"].payload[
+        "future_planning_rules"
+    ]
+    assert artifact_index["trial-001:trial-summary"].payload["claim_boundary"] == (
+        "This packet is bounded transfer evidence only. It is not AGI proof, "
+        "deployment authorization, certification, or independent validation."
+    )
 
 
 def test_validate_evidence_packet_detects_duplicate_artifacts() -> None:
