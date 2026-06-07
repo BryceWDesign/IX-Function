@@ -7,11 +7,11 @@ that a digest proves truth, AGI, or operational readiness.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from enum import StrEnum
 import hashlib
 import json
-from typing import TypeAlias
+from typing import Any, TypeAlias, cast
 
 from ix_function.trial import TransferTrialResult
 
@@ -77,6 +77,36 @@ def sha256_for_json(value: JsonValue) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def to_json_value(value: object) -> JsonValue:
+    """Convert supported IX-Function values into deterministic JSON values."""
+
+    if isinstance(value, StrEnum):
+        return value.value
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [to_json_value(item) for item in value]
+    if isinstance(value, dict):
+        converted: JsonObject = {}
+        for key, item in value.items():
+            converted[str(key)] = to_json_value(item)
+        return converted
+    if is_dataclass(value) and not isinstance(value, type):
+        raw = asdict(cast(Any, value))
+        return to_json_value(raw)
+
+    raise TypeError(f"Unsupported evidence JSON value: {type(value).__name__}")
+
+
+def artifact_payload_for_object(value: object) -> JsonObject:
+    """Convert a dataclass-like object into a JSON object payload."""
+
+    payload = to_json_value(value)
+    if not isinstance(payload, dict):
+        raise TypeError("Evidence artifact payload must serialize to a JSON object")
+    return payload
+
+
 def create_evidence_artifact(
     *,
     artifact_id: str,
@@ -95,6 +125,21 @@ def create_evidence_artifact(
         artifact_type=artifact_type,
         payload=payload,
         sha256_digest=sha256_for_json(digest_payload),
+    )
+
+
+def create_evidence_artifact_from_object(
+    *,
+    artifact_id: str,
+    artifact_type: EvidenceArtifactType,
+    value: object,
+) -> EvidenceArtifact:
+    """Create an evidence artifact from a supported dataclass-like object."""
+
+    return create_evidence_artifact(
+        artifact_id=artifact_id,
+        artifact_type=artifact_type,
+        payload=artifact_payload_for_object(value),
     )
 
 
@@ -205,16 +250,68 @@ def trial_summary_payload(result: TransferTrialResult) -> JsonObject:
 
 
 def build_trial_evidence_packet(result: TransferTrialResult) -> EvidencePacket:
-    """Build the initial deterministic evidence packet for a transfer trial."""
+    """Build a deterministic evidence packet for a transfer trial."""
 
-    summary_artifact = create_evidence_artifact(
-        artifact_id=f"{result.trial_id}:trial-summary",
-        artifact_type=EvidenceArtifactType.TRIAL_SUMMARY,
-        payload=trial_summary_payload(result),
+    artifacts = (
+        create_evidence_artifact(
+            artifact_id=f"{result.trial_id}:trial-summary",
+            artifact_type=EvidenceArtifactType.TRIAL_SUMMARY,
+            payload=trial_summary_payload(result),
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:source-evidence",
+            artifact_type=EvidenceArtifactType.SOURCE_EVIDENCE,
+            value=result.source_evidence,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:mapping",
+            artifact_type=EvidenceArtifactType.MAPPING,
+            value=result.mapping,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:prediction-readiness",
+            artifact_type=EvidenceArtifactType.PREDICTION_READINESS,
+            value=result.prediction_readiness,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:reality-delta",
+            artifact_type=EvidenceArtifactType.REALITY_DELTA,
+            value=result.reality_delta,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:learning-update",
+            artifact_type=EvidenceArtifactType.LEARNING_UPDATE,
+            value=result.learning_update,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:uncertainty-ledger",
+            artifact_type=EvidenceArtifactType.UNCERTAINTY_LEDGER,
+            value=result.uncertainty_ledger,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:uncertainty-gate",
+            artifact_type=EvidenceArtifactType.UNCERTAINTY_GATE,
+            value=result.uncertainty_gate,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:falsification-ledger",
+            artifact_type=EvidenceArtifactType.FALSIFICATION_LEDGER,
+            value=result.falsification_ledger,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:negative-control-suite",
+            artifact_type=EvidenceArtifactType.NEGATIVE_CONTROL_SUITE,
+            value=result.negative_control_suite,
+        ),
+        create_evidence_artifact_from_object(
+            artifact_id=f"{result.trial_id}:anti-theater-gate",
+            artifact_type=EvidenceArtifactType.ANTI_THEATER_GATE,
+            value=result.anti_theater_gate,
+        ),
     )
     return build_evidence_packet(
         packet_id=f"{result.trial_id}:evidence-packet",
-        artifacts=(summary_artifact,),
+        artifacts=artifacts,
     )
 
 
