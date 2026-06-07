@@ -17,6 +17,7 @@ from ix_function.reality_delta import (
     build_reality_delta_report,
     classify_transfer_outcome,
     confidence_delta_for_status,
+    mean_observable_score,
     numeric_value,
     range_matches_prediction,
     score_predicted_observable,
@@ -177,6 +178,10 @@ def test_classify_transfer_outcome_distinguishes_result_types() -> None:
     assert classify_transfer_outcome(()) is TransferOutcomeStatus.UNSCORABLE
 
 
+def test_mean_observable_score_handles_empty_unscorable_collection() -> None:
+    assert mean_observable_score(()) == 0.0
+
+
 def test_confidence_delta_for_status_is_bounded_and_conservative() -> None:
     assert confidence_delta_for_status(TransferOutcomeStatus.SUPPORTED, 1.0) == 0.12
     assert confidence_delta_for_status(TransferOutcomeStatus.MIXED, 0.5) == 0.02
@@ -229,6 +234,42 @@ def test_build_reality_delta_report_marks_supported_transfer() -> None:
     assert "bounded transfer evidence rather than AGI proof" in (
         report.uncertainty_notes[0]
     )
+
+
+def test_build_reality_delta_report_handles_all_unscorable_numeric_values() -> None:
+    baseline = DomainSnapshot(
+        domain_id="ci-pipeline",
+        snapshot_id="baseline-text",
+        captured_at_label="before-target-intervention",
+        values=(
+            MeasuredValue(
+                observable_name="Completion Time",
+                value="not numeric",
+                evidence_id="baseline-text-value",
+            ),
+        ),
+        source="ci-fixture",
+    )
+    outcome = OutcomeRecord(
+        domain_id="ci-pipeline",
+        outcome_id="outcome-text",
+        observed_after_intervention_id="increase-worker-count",
+        values=(
+            MeasuredValue(
+                observable_name="Completion Time",
+                value="still not numeric",
+                evidence_id="outcome-text-value",
+            ),
+        ),
+        result_summary="Outcome values were not numeric.",
+    )
+
+    report = build_reality_delta_report(make_prediction(), baseline, outcome)
+
+    assert report.status is TransferOutcomeStatus.UNSCORABLE
+    assert report.mean_score == 0.0
+    assert report.confidence_delta == -0.08
+    assert "could not be scored" in report.uncertainty_notes[0]
 
 
 def test_build_reality_delta_report_blocks_invalid_input_records() -> None:
