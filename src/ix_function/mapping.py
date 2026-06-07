@@ -8,9 +8,9 @@ falsification layers can weaken or block claims.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
-import re
 
 from ix_function.causal_function import CausalFunction, CausalVariableSlot
 from ix_function.domain import DomainProfile, Observable
