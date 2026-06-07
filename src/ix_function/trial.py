@@ -295,7 +295,8 @@ def validate_transfer_trial_input(trial_input: TransferTrialInput) -> tuple[str,
         errors.append("trial_id must not be empty")
 
     errors.extend(
-        f"domain pair: {error}" for error in validate_domain_pair(trial_input.domain_pair)
+        f"domain pair: {error}"
+        for error in validate_domain_pair(trial_input.domain_pair)
     )
     errors.extend(
         f"causal function: {error}"
@@ -333,13 +334,18 @@ def validate_transfer_trial_input(trial_input: TransferTrialInput) -> tuple[str,
 
     if trial_input.prediction.function_id != trial_input.causal_function.function_id:
         errors.append("prediction function_id must match causal function_id")
-    if trial_input.prediction.target_domain_id != trial_input.domain_pair.target.domain_id:
+    if (
+        trial_input.prediction.target_domain_id
+        != trial_input.domain_pair.target.domain_id
+    ):
         errors.append("prediction target_domain_id must match target domain_id")
     if (
         trial_input.prediction.target_intervention_id
         != trial_input.target_intervention.intervention_id
     ):
-        errors.append("prediction target_intervention_id must match target intervention")
+        errors.append(
+            "prediction target_intervention_id must match target intervention"
+        )
     if (
         trial_input.target_outcome.observed_after_intervention_id
         != trial_input.target_intervention.intervention_id
