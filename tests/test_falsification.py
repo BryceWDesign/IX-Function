@@ -3,6 +3,7 @@ from __future__ import annotations
 from ix_function.falsification import (
     CriterionEvaluation,
     CriterionStatus,
+    FalsificationLedger,
     FalsificationSeverity,
     FalsificationVerdict,
     build_falsification_ledger,
@@ -155,7 +156,10 @@ def test_build_falsification_ledger_kills_same_domain_theater() -> None:
 
     assert ledger.verdict is FalsificationVerdict.KILL_CLAIM
     assert ledger.kill_evaluations()
-    assert any("Source and target domains were not" in action for action in ledger.required_actions)
+    assert any(
+        "Source and target domains were not" in action
+        for action in ledger.required_actions
+    )
 
 
 def test_build_falsification_ledger_kills_insufficient_mapping() -> None:
@@ -189,7 +193,10 @@ def test_build_falsification_ledger_downgrades_failed_outcome() -> None:
 
     assert ledger.verdict is FalsificationVerdict.DOWNGRADE_CLAIM
     assert ledger.failed_evaluations()
-    assert any("Reality-delta status was 'failed'" in action for action in ledger.required_actions)
+    assert any(
+        "Reality-delta status was 'failed'" in action
+        for action in ledger.required_actions
+    )
 
 
 def test_build_falsification_ledger_kills_blocking_uncertainty() -> None:
@@ -285,17 +292,7 @@ def test_validate_falsification_ledger_rejects_duplicate_criterion_ids() -> None
         reason="Passed.",
         evidence_refs=("ref",),
     )
-    ledger = build_falsification_ledger(
-        ledger_id="falsification-ledger-007",
-        function_id="causal-bottleneck-v1",
-        is_cross_domain=True,
-        mapping=make_mapping(),
-        report=make_report(),
-        uncertainty_ledger=make_uncertainty_ledger(),
-        learning_update=make_learning_update(),
-        criteria=(),
-    )
-    invalid_ledger = type(ledger)(
+    invalid_ledger = FalsificationLedger(
         ledger_id="falsification-ledger-007",
         function_id="causal-bottleneck-v1",
         evaluations=(evaluation, evaluation),
