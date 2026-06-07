@@ -4,8 +4,8 @@ from ix_function.falsification import FalsificationVerdict
 from ix_function.observation import MeasuredValue, OutcomeRecord
 from ix_function.prediction import TransferPrediction
 from ix_function.trial import (
-    TrialStatus,
     TransferTrialInput,
+    TrialStatus,
     choose_trial_status,
     evaluate_bounded_claim_request,
     required_actions_for_trial,
@@ -78,7 +78,8 @@ def test_run_transfer_trial_blocks_failed_transfer_outcome() -> None:
     assert result.required_actions
 
 
-def test_validate_transfer_trial_input_blocks_prediction_intervention_mismatch() -> None:
+def test_validate_transfer_trial_input_blocks_prediction_intervention_mismatch(
+) -> None:
     trial_input = make_trial_input()
     invalid_prediction = TransferPrediction(
         prediction_id=trial_input.prediction.prediction_id,
