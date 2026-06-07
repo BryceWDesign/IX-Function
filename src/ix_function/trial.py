@@ -266,7 +266,10 @@ def required_actions_for_trial(
         )
 
     if status is TrialStatus.INVALID:
-        return tuple(f"Fix invalid trial input or artifact: {error}" for error in blocking_errors)
+        return tuple(
+            f"Fix invalid trial input or artifact: {error}"
+            for error in blocking_errors
+        )
 
     actions: list[str] = []
     if not uncertainty_gate.allowed:
