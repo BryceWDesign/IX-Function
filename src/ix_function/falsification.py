@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ix_function.learning import LearningDisposition, TransferLearningUpdate
-from ix_function.mapping import MappingQuality, TransferMapping
+from ix_function.learning import TransferLearningUpdate
+from ix_function.mapping import TransferMapping
 from ix_function.reality_delta import RealityDeltaReport, TransferOutcomeStatus
 from ix_function.uncertainty import UncertaintyLedger
 
