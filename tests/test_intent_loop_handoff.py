@@ -11,7 +11,11 @@ from ix_function.intent_loop_handoff import (
     validate_intent_loop_handoff_packet,
 )
 from ix_function.observation import MeasuredValue, OutcomeRecord
-from ix_function.trial import TransferTrialInput, TransferTrialResult, run_transfer_trial
+from ix_function.trial import (
+    TransferTrialInput,
+    TransferTrialResult,
+    run_transfer_trial,
+)
 from tests.fixtures import make_trial_input
 
 
